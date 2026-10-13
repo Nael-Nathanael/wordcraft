@@ -232,6 +232,26 @@ fn build_sha() -> &'static str {
     option_env!("WORDCRAFT_BUILD_SHA").map(|s| s.get(..8).unwrap_or(s)).unwrap_or("dev")
 }
 
+/// The arguments as text (#1440). A file whose name isn't valid Unicode, such as a Latin-1 one, is
+/// left out with a warning, as a file that fails to open is: `file.open` takes its path as text. A
+/// `--control` port that isn't is an error.
+fn text_args() -> Vec<String> {
+    let mut args = Vec::new();
+    for (i, a) in std::env::args_os().skip(1).enumerate() {
+        match a.into_string() {
+            Ok(a) => args.push(a),
+            Err(a) if args.last().is_some_and(|p| p == "--control") => {
+                // Unlike `eprintln!`, never panics.
+                let (n, lossy) = (i + 1, a.to_string_lossy());
+                let _ = std::io::Write::write_fmt(&mut std::io::stderr(), format_args!("wordcraft: argument {n} is not valid Unicode: {lossy}\n"));
+                std::process::exit(2);
+            }
+            Err(a) => log::warn!("{}: not opened, the file name isn't valid Unicode", a.to_string_lossy()),
+        }
+    }
+    args
+}
+
 fn main() -> eframe::Result {
     // First, so the panic hook and every start-up warning are recorded (`logging`).
     let logger = logging::install();
@@ -239,7 +259,7 @@ fn main() -> eframe::Result {
     let mut control_port: Option<u16> = std::env::var("WORDCRAFT_CONTROL_PORT").ok().and_then(|p| p.parse().ok());
     let mut files = Vec::new();
     let mut sample = false;
-    let mut args = std::env::args().skip(1);
+    let mut args = text_args().into_iter();
     while let Some(a) = args.next() {
         match a.as_str() {
             "--control" => control_port = args.next().and_then(|p| p.parse().ok()),
