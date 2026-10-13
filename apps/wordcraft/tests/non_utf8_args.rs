@@ -31,13 +31,14 @@ fn app(args: &[OsString]) -> Output {
     child.wait_with_output().unwrap()
 }
 
+/// The file opens once the window is up (`open_non_unicode`, unit-tested in `main.rs`).
 #[test]
-fn a_file_with_such_a_name_is_left_out_with_a_warning() {
+fn a_file_with_such_a_name_starts_the_app() {
     let out = app(&["--sample".into(), OsString::from_vec(b"caf\xe9.docx".to_vec())]);
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("caf\u{FFFD}.docx: not opened, the file name isn't valid Unicode"), "stderr: {stderr}");
     assert!(!stderr.contains("panic"), "stderr: {stderr}");
     // It went on to open the window, which fails without a display.
+    assert!(stderr.contains("WinitEventLoop"), "stderr: {stderr}");
     assert_eq!(out.status.code(), Some(1), "stderr: {stderr}");
 }
 

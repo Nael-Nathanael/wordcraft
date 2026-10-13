@@ -558,10 +558,21 @@ mod tests {
         let latin1 = || OsString::from_vec(b"caf\xe9.docx".to_vec());
         let ok = |raw: Vec<OsString>| text_args(&raw).unwrap().1;
         assert_eq!(ok(vec!["zotero".into(), "refresh".into(), latin1()]), Some(PathBuf::from(latin1())));
-        // As `pos` counts: the `--page` value comes first.
-        assert_eq!(ok(vec!["render".into(), "--page".into(), latin1(), "out.png".into()]), Some(PathBuf::from(latin1())));
+        assert_eq!(ok(vec!["render".into(), latin1(), "out.png".into(), "--page".into(), "2".into()]), Some(PathBuf::from(latin1())));
         assert_eq!(ok(vec!["run".into(), "--print".into(), "--file".into(), latin1()]), Some(PathBuf::from(latin1())));
         assert_eq!(ok(vec!["info".into(), "in.docx".into()]), None);
+        // Every command that opens a file reaches the open with it (no such file here), so
+        // `OPENS_FILE` and the commands' own arguments agree.
+        let missing = || OsString::from_vec(b"/definitely/not/caf\xe9.docx".to_vec());
+        let mut opening: Vec<Vec<OsString>> = OPENS_FILE
+            .iter()
+            .map(|(cmd, n)| [vec![(*cmd).into()], vec![OsString::from("refresh"); *n], vec![missing(), "out.png".into()]].concat())
+            .collect();
+        opening.push(vec!["run".into(), "--file".into(), missing()]);
+        for raw in opening {
+            let e = run(&raw).unwrap_err().to_string();
+            assert!(e.contains("No such file"), "{raw:?}: {e}");
+        }
         for (raw, n) in [
             (vec!["zotero".into(), latin1(), "in.docx".into()], 2),
             (vec!["render".into(), "in.docx".into(), latin1()], 3),
