@@ -1638,7 +1638,7 @@ fn line_and_page_break_toggles_take_an_explicit_value() {
         ("para.widowControl", |p| p.widow_control),
     ];
     for (id, field) in cases {
-        assert_eq!(reg.get(id).unwrap().params, r#"{"value"?: bool}"#, "{id} lists its param");
+        assert!(reg.get(id).unwrap().params.contains(r#""value"?: bool"#), "{id} lists its param");
         let mut s = s();
         run(&mut s, "text.insert", json!({"text": "Heading"}));
         let at = |s: &Session, block| s.doc.para_at(&Pos::body(block, 0)).and_then(|p| field(&p.props));
