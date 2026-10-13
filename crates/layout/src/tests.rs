@@ -2042,6 +2042,13 @@ fn a_word_too_wide_for_the_strip_beside_a_float_moves_on_whole() {
     // A word wider than the whole line breaks where it is, beside the object.
     let huge = lines(&format!("{} ", "x".repeat(120)), 468.0 - 150.0 - 32.0, 150.0);
     assert!(huge[0].0 < 1.0 && huge.iter().any(|l| l.3), "{huge:?}");
+    // The strip left of the object: a skipped strip leaves the row's other span its first line.
+    let left = lines(long, 32.0, 150.0);
+    assert!(left.iter().all(|l| !l.3) && left.iter().any(|l| l.0 < 150.0 && l.1 >= 182.0 - 0.01 && !l.2), "{left:?}");
+    // Rows go down the page, and a line beside the object shares its row with the line before it.
+    for ls in [&right, &short, &only, &huge, &left] {
+        assert!(ls.windows(2).all(|w| if w[1].2 { w[1].0 == w[0].0 } else { w[1].0 > w[0].0 }), "{ls:?}");
+    }
 }
 
 /// Where a line's text ends (its last non-space cluster's right edge; trailing spaces may hang

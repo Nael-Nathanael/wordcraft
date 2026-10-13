@@ -1594,9 +1594,11 @@ fn break_lines(pl: &mut ParaLayout, env: &ParaEnv, mark_style: u16, level: Optio
     // Spans skipped in a row because the next word didn't fit (see `skip`).
     let mut skipped = 0;
     loop {
-        let beside = !row_rest.is_empty();
+        // A line already sits on this row (a span before this one may have been skipped).
+        let beside = !row_rest.is_empty() && lines.len() > row_first;
         // The span is narrowed by a floating object.
-        let mut narrowed = beside;
+        let mut narrowed = !row_rest.is_empty();
+        let row_lo = if first { first_left } else { rp.indent_left };
         let (left, right_edge) = if let Some(span) = row_rest.pop_front() {
             span
         } else {
@@ -1755,17 +1757,18 @@ fn break_lines(pl: &mut ParaLayout, env: &ParaEnv, mark_style: u16, level: Optio
                 } else {
                     // No opportunity: break here (a long word), unless the span is beside a
                     // floating object and the word fits the full line; then it tries the row's
-                    // next span, or the next row.
-                    let word: f32 = pl
-                        .clusters
-                        .get(c0..)
-                        .unwrap_or_default()
-                        .iter()
-                        .scan(false, |done, c| (!std::mem::replace(done, c.break_after)).then_some(c))
+                    // next span, or the next row. The word runs to the next break that isn't a
+                    // hyphenation point.
+                    let word: f32 = (c0..n)
+                        .filter_map(|k| pl.clusters.get(k).map(|c| (k, c)))
+                        .scan(false, |done, (k, c)| {
+                            let end = c.break_after && pl.hyph_after.binary_search(&(k as u32)).is_err();
+                            (!std::mem::replace(done, end)).then_some(c)
+                        })
                         .filter(|c| c.kind != ClKind::Space)
                         .map(|c| c.adv)
                         .sum();
-                    let full = base_right - if first { first_left } else { rp.indent_left };
+                    let full = base_right - row_lo;
                     skip = narrowed && skipped < 50 && word <= full + 0.01;
                 }
                 break;
@@ -1843,7 +1846,12 @@ fn break_lines(pl: &mut ParaLayout, env: &ParaEnv, mark_style: u16, level: Optio
                     top + even_row(lines.get_mut(row_first..).unwrap_or_default())
                 } else {
                     // Nothing on this row: go below the first object that ends, as when no span is wide enough.
-                    exclusions.iter().filter(|e| e.bottom > top && e.top < top + est_h).map(|e| e.bottom).reduce(f32::min).unwrap_or(top + est_h)
+                    exclusions
+                        .iter()
+                        .filter(|e| e.bottom > top && e.top < top + est_h && e.right > row_lo && e.left < base_right)
+                        .map(|e| e.bottom)
+                        .reduce(f32::min)
+                        .unwrap_or(top + est_h)
                 };
             }
             continue;
