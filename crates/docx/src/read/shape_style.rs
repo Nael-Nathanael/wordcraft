@@ -44,6 +44,32 @@ pub(crate) fn preset_kind(prst: &str) -> ShapeKind {
     }
 }
 
+/// The shape kind drawn for a legacy VML preset shape type `spt` (`o:spt`, the MSOSPT numbers of
+/// [MS-ODRAW] §2.4.24), for the types whose geometry is the DrawingML preset WordCraft draws and
+/// saves; None for the rest, which aren't drawn rather than drawn as something else.
+pub(crate) fn vml_preset_kind(spt: u32) -> Option<ShapeKind> {
+    Some(match spt {
+        // Rectangle, flowchart process.
+        1 | 109 => ShapeKind::Rectangle,
+        2 => ShapeKind::RoundedRectangle,
+        // Ellipse, flowchart connector.
+        3 | 120 => ShapeKind::Ellipse,
+        // Diamond, flowchart decision.
+        4 | 110 => ShapeKind::Diamond,
+        // Isosceles triangle.
+        5 => ShapeKind::Triangle,
+        // Five-pointed star.
+        12 => ShapeKind::Star,
+        // Right arrow.
+        13 => ShapeKind::Arrow,
+        // Line, straight connector: corner to corner of the shape's box.
+        20 | 32 => ShapeKind::Line,
+        74 => ShapeKind::Heart,
+        202 => ShapeKind::TextBox,
+        _ => return None,
+    })
+}
+
 /// A shape's fill and outline.
 #[derive(Debug, Default, PartialEq)]
 pub(crate) struct ShapePaint {
@@ -164,6 +190,19 @@ mod tests {
         assert_eq!(preset_kind("wedgeEllipseCallout"), ShapeKind::Ellipse);
         assert_eq!(preset_kind("wedgeRectCallout"), ShapeKind::Rectangle);
         assert_eq!(preset_kind("flowChartDecision"), ShapeKind::Diamond);
+    }
+
+    #[test]
+    fn vml_presets_map_one_to_one() {
+        assert_eq!(vml_preset_kind(13), Some(ShapeKind::Arrow));
+        assert_eq!(vml_preset_kind(12), Some(ShapeKind::Star));
+        assert_eq!(vml_preset_kind(32), Some(ShapeKind::Line));
+        assert_eq!(vml_preset_kind(202), Some(ShapeKind::TextBox));
+        // Drawn differently from anything WordCraft has: left arrow, right triangle, four-point
+        // star, freeform, WordArt, out of range.
+        for spt in [66, 6, 187, 0, 136, u32::MAX] {
+            assert_eq!(vml_preset_kind(spt), None, "{spt}");
+        }
     }
 
     #[test]
