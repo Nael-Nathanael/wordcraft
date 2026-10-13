@@ -31,7 +31,8 @@ fn app(args: &[&str]) -> Output {
 
 #[test]
 fn a_bad_port_is_an_error_naming_it() {
-    let cases: [(&[&str], &str); 7] = [
+    let cases: [(&[&str], &str); 8] = [
+        (&["--control", "-99999999999999999999"], ", got \"-99999999999999999999\""),
         (&["--control", "abc"], ", got \"abc\""),
         (&["--control", "79811"], ", got \"79811\""),
         (&["--control", "0"], ", got \"0\""),

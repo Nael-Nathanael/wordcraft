@@ -245,9 +245,9 @@ fn main() -> eframe::Result {
         match a.as_str() {
             // A flag after `--control` stays a flag; a bad or missing port is an error (#1426).
             "--control" => {
-                let port = args.next_if(|p| !p.starts_with('-') || p.parse::<i64>().is_ok());
-                match port.as_deref().and_then(|p| p.parse::<u16>().ok()).filter(|&p| p != 0) {
-                    Some(p) => control_port = Some(p),
+                let port = args.next_if(|p| p.strip_prefix('-').is_none_or(|n| n.starts_with(|c: char| c.is_ascii_digit())));
+                match port.as_deref().and_then(|p| p.parse::<std::num::NonZeroU16>().ok()) {
+                    Some(p) => control_port = Some(p.get()),
                     None => bad_control = Some(port),
                 }
             }
