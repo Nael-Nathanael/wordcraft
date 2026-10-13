@@ -591,6 +591,21 @@ impl WordApp {
         self.session.view.draw.pens = std::mem::take(&mut self.ui.ink_pens);
     }
 
+    /// Select the picture or icon the person just inserted or pasted, so it shows its handles.
+    /// `insert.picture` leaves the caret after it, which scripts and agents keep so their next
+    /// typing doesn't replace it (#965).
+    pub(crate) fn select_inserted_picture(&mut self, r: &Result<Value, String>) {
+        if !r.as_ref().is_ok_and(|v| v.get("media").is_some() && v.get("canvasMember").is_none()) || !self.session.sel.is_collapsed() {
+            return;
+        }
+        let end = self.session.sel.focus.clone();
+        let Some(off) = end.off.checked_sub(wordcraft_doc::para::OBJ.len_utf8()) else { return };
+        let start = wordcraft_doc::Pos { off, ..end.clone() };
+        if self.session.doc.para_at(&start).and_then(|p| p.object_at(off)).is_some_and(|o| o.is_drawing()) {
+            self.session.sel = wordcraft_engine::Selection { anchor: start, focus: end };
+        }
+    }
+
     /// Run a command the user asked for (ribbon, shortcut, Backstage, file drop). New, Open,
     /// Close, Envelopes, Labels and Finish & Merge on a document with unsaved changes first ask
     /// Save / Don't Save / Cancel, and the command runs once that is answered (`ui.saveChanges`).
@@ -624,14 +639,8 @@ impl WordApp {
             return r;
         }
         let r = self.execute_user(id, params);
-        // A picture or icon the person inserts is selected, as in Word; scripts and agents
-        // (`execute`) keep the caret after it so their next typing doesn't replace it (#965).
-        if matches!(id, "insert.picture" | "insert.icon")
-            && r.as_ref().is_ok_and(|v| v.get("media").is_some() && v.get("canvasMember").is_none())
-            && let Some((pos, _)) = wordcraft_engine::cmd::objects::selected(&self.session)
-        {
-            let end = wordcraft_doc::Pos { off: pos.off + wordcraft_doc::para::OBJ.len_utf8(), ..pos.clone() };
-            self.session.sel = wordcraft_engine::Selection { anchor: pos, focus: end };
+        if matches!(id, "insert.picture" | "insert.icon") {
+            self.select_inserted_picture(&r);
         }
         let r = system_clipboard::explain(self, id, r);
         // Check Accessibility shows its findings in the Accessibility pane, kept up to date there.

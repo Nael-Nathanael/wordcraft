@@ -1447,6 +1447,17 @@ mod tests {
         }
     }
 
+    /// #965: two pictures inserted by commands in a row are both kept; the second doesn't
+    /// replace the first.
+    #[test]
+    fn two_inserted_pictures_in_a_row_are_both_kept() {
+        let data = super::super::insert::base64_encode(&png(20, 10));
+        let mut s = Session::new(wordcraft_doc::Document::new());
+        s.run("insert.picture", &json!({"data": data})).unwrap();
+        s.run("insert.picture", &json!({"data": data})).unwrap();
+        assert_eq!(s.run("arrange.selectionPane", &json!({})).unwrap().as_array().map(Vec::len), Some(2));
+    }
+
     #[test]
     fn picture_pipeline() {
         let mut s = Session::new(wordcraft_doc::Document::new());
