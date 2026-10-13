@@ -20,6 +20,8 @@ fn assert_prints_usage(args: &[&str]) {
 
 #[test]
 fn every_subcommand_prints_usage_for_help_and_h() {
+    assert_prints_usage(&["--help"]);
+    assert_prints_usage(&["-h"]);
     for sub in SUBCOMMANDS {
         for flag in ["--help", "-h"] {
             assert_prints_usage(&[sub, flag]);
