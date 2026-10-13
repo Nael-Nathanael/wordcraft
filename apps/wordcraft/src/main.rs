@@ -239,10 +239,18 @@ fn main() -> eframe::Result {
     let mut control_port: Option<u16> = std::env::var("WORDCRAFT_CONTROL_PORT").ok().and_then(|p| p.parse().ok());
     let mut files = Vec::new();
     let mut sample = false;
-    let mut args = std::env::args().skip(1);
+    let mut bad_control: Option<Option<String>> = None;
+    let mut args = std::env::args().skip(1).peekable();
     while let Some(a) = args.next() {
         match a.as_str() {
-            "--control" => control_port = args.next().and_then(|p| p.parse().ok()),
+            // A flag after `--control` stays a flag; a bad or missing port is an error (#1426).
+            "--control" => {
+                let port = args.next_if(|p| !p.starts_with('-') || p.parse::<i64>().is_ok());
+                match port.as_deref().and_then(|p| p.parse::<u16>().ok()).filter(|&p| p != 0) {
+                    Some(p) => control_port = Some(p),
+                    None => bad_control = Some(port),
+                }
+            }
             "--sample" => sample = true,
             "--version" => {
                 println!("wordcraft {} ({})", env!("CARGO_PKG_VERSION"), build_sha());
@@ -250,6 +258,12 @@ fn main() -> eframe::Result {
             }
             _ => files.push(a),
         }
+    }
+    // After the loop, so `--version` later on the line still wins. Unlike `eprintln!`, never panics.
+    if let Some(port) = bad_control {
+        let got = port.map(|p| format!(", got {p:?}")).unwrap_or_default();
+        let _ = std::io::Write::write_fmt(&mut std::io::stderr(), format_args!("wordcraft: --control needs a port number from 1 to 65535{got}\n"));
+        std::process::exit(2);
     }
     // The log file lives in the settings directory, next to the preferences; opened after the
     // arguments, so `--version` leaves no file behind. Records logged until now are written to it
