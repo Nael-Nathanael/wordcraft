@@ -624,6 +624,15 @@ impl WordApp {
             return r;
         }
         let r = self.execute_user(id, params);
+        // A picture or icon the person inserts is selected, as in Word; scripts and agents
+        // (`execute`) keep the caret after it so their next typing doesn't replace it (#965).
+        if matches!(id, "insert.picture" | "insert.icon")
+            && r.as_ref().is_ok_and(|v| v.get("media").is_some() && v.get("canvasMember").is_none())
+            && let Some((pos, _)) = wordcraft_engine::cmd::objects::selected(&self.session)
+        {
+            let end = wordcraft_doc::Pos { off: pos.off + wordcraft_doc::para::OBJ.len_utf8(), ..pos.clone() };
+            self.session.sel = wordcraft_engine::Selection { anchor: pos, focus: end };
+        }
         let r = system_clipboard::explain(self, id, r);
         // Check Accessibility shows its findings in the Accessibility pane, kept up to date there.
         if id == "file.accessibility" && r.is_ok() {
@@ -3924,6 +3933,24 @@ mod tests {
 
     fn object_count(a: &mut WordApp) -> usize {
         a.session.run("arrange.selectionPane", &json!({})).unwrap().as_array().map(|x| x.len()).unwrap_or(0)
+    }
+
+    /// #965: a picture or icon the person inserts is selected, with handles, as in Word; one a
+    /// script inserts (control channel, MCP bridge) leaves the caret after it, and typing keeps it.
+    #[test]
+    fn inserted_picture_is_selected_for_the_user_not_for_scripts() {
+        let data = wordcraft_engine::cmd::insert::base64_encode(&png_bytes([200, 30, 30, 255]));
+        for (id, params) in [("insert.picture", json!({"data": data})), ("insert.icon", json!({"id": "sun"}))] {
+            let mut a = app();
+            a.run(id, params.clone()).unwrap();
+            assert!(crate::objects::selected(&a).is_some(), "{id}: the person's picture is selected");
+            let mut a = app();
+            a.execute(id, params).unwrap();
+            assert!(a.session.sel.is_collapsed() && crate::objects::selected(&a).is_none(), "{id}: a script gets the caret after it");
+            a.execute("text.newParagraph", json!({})).unwrap();
+            a.execute("text.insert", json!({"text": "cap"})).unwrap();
+            assert_eq!(object_count(&mut a), 1, "{id}");
+        }
     }
 
     /// A pending Change Picture replaces the selected image instead of inserting (#147).
