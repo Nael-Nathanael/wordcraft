@@ -1591,8 +1591,12 @@ fn break_lines(pl: &mut ParaLayout, env: &ParaEnv, mark_style: u16, level: Optio
     // The rest of the current row: spans on the far side of floating objects, left to right.
     let mut row_rest: VecDeque<(f32, f32)> = VecDeque::new();
     let mut row_first = 0usize;
+    // Spans skipped in a row because the next word didn't fit (see `skip`).
+    let mut skipped = 0;
     loop {
         let beside = !row_rest.is_empty();
+        // The span is narrowed by a floating object.
+        let mut narrowed = beside;
         let (left, right_edge) = if let Some(span) = row_rest.pop_front() {
             span
         } else {
@@ -1607,6 +1611,7 @@ fn break_lines(pl: &mut ParaLayout, env: &ParaEnv, mark_style: u16, level: Optio
                 }
                 match row_spans(exclusions, top, est_h, lo, base_right).map(|mut spans| (spans.pop_front(), spans)) {
                     Ok((Some((a, b)), rest)) => {
+                        narrowed = !rest.is_empty() || a > lo || b < base_right;
                         row_rest = rest;
                         row_first = lines.len();
                         break (a, b.max(a + 12.0));
@@ -1647,6 +1652,8 @@ fn break_lines(pl: &mut ParaLayout, env: &ParaEnv, mark_style: u16, level: Optio
         }
         let line_start_x = x;
         let c0 = i;
+        // The first word doesn't fit a span narrowed by a floating object: it moves on whole.
+        let mut skip = false;
         let mut xs: Vec<f32> = Vec::new();
         let mut leaders = Vec::new();
         let mut last_break: Option<usize> = None; // cluster index after which we may break
@@ -1746,7 +1753,20 @@ fn break_lines(pl: &mut ParaLayout, env: &ParaEnv, mark_style: u16, level: Optio
                     // Recompute x for the kept clusters.
                     x = xs.last().copied().unwrap_or(line_start_x) + pl.clusters.get(bk).map(|c| c.adv).unwrap_or(0.0);
                 } else {
-                    // No opportunity: break here (a long word).
+                    // No opportunity: break here (a long word), unless the span is beside a
+                    // floating object and the word fits the full line; then it tries the row's
+                    // next span, or the next row.
+                    let word: f32 = pl
+                        .clusters
+                        .get(c0..)
+                        .unwrap_or_default()
+                        .iter()
+                        .scan(false, |done, c| (!std::mem::replace(done, c.break_after)).then_some(c))
+                        .filter(|c| c.kind != ClKind::Space)
+                        .map(|c| c.adv)
+                        .sum();
+                    let full = base_right - if first { first_left } else { rp.indent_left };
+                    skip = narrowed && skipped < 50 && word <= full + 0.01;
                 }
                 break;
             }
@@ -1815,6 +1835,18 @@ fn break_lines(pl: &mut ParaLayout, env: &ParaEnv, mark_style: u16, level: Optio
                 }
             }
             j += 1;
+        }
+        if skip {
+            skipped += 1;
+            if row_rest.is_empty() {
+                top = if lines.len() > row_first {
+                    top + even_row(lines.get_mut(row_first..).unwrap_or_default())
+                } else {
+                    // Nothing on this row: go below the first object that ends, as when no span is wide enough.
+                    exclusions.iter().filter(|e| e.bottom > top && e.top < top + est_h).map(|e| e.bottom).reduce(f32::min).unwrap_or(top + est_h)
+                };
+            }
+            continue;
         }
         if end == LineEnd::Para || end == LineEnd::Wrap {
             let xc = x;
@@ -2007,20 +2039,14 @@ fn break_lines(pl: &mut ParaLayout, env: &ParaEnv, mark_style: u16, level: Optio
         }
         lines.push(line);
         first = false;
+        skipped = 0;
         i = j;
         // Text that wrapped continues on the row's far side; anything else ends the row.
         if end != LineEnd::Wrap || i >= n {
             row_rest.clear();
         }
         if row_rest.is_empty() {
-            // The row is as tall as its tallest line.
-            let row = lines.get_mut(row_first..).unwrap_or_default();
-            let h = row.iter().map(|l| l.height).fold(0.0f32, f32::max);
-            for l in row {
-                l.baseline += h - l.height;
-                l.height = h;
-            }
-            top += h;
+            top += even_row(lines.get_mut(row_first..).unwrap_or_default());
         }
         if i >= n {
             // A paragraph ending with a line break gets an empty last line.
@@ -2086,6 +2112,16 @@ fn break_lines(pl: &mut ParaLayout, env: &ParaEnv, mark_style: u16, level: Optio
     }
     pl.height = top;
     pl.lines = lines;
+}
+
+/// Make a row's lines as tall as its tallest, and return that height.
+fn even_row(row: &mut [Line]) -> f32 {
+    let h = row.iter().map(|l| l.height).fold(0.0f32, f32::max);
+    for l in row {
+        l.baseline += h - l.height;
+        l.height = h;
+    }
+    h
 }
 
 /// Finish a broken line of a bidirectional paragraph: resolve each cluster's level for the line
