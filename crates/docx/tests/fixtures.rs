@@ -1554,7 +1554,8 @@ fn vml_preset_shapes_are_drawn() {
         pict(r##"<v:shape o:spt="74" style="width:30pt;height:30pt" fillcolor="red" stroked="f"/>"##),
         pict(r##"<v:shapetype id="tri" o:spt="5" coordsize="21600,21600"/><v:shape type="#tri" style="width:20pt;height:10pt" filled="f"/>"##),
         pict(r##"<v:shape type="#_x0000_t4" style="width:50pt;height:50pt" fillcolor="#ffff00"><v:textbox><w:txbxContent><w:p><w:r><w:t>yes?</w:t></w:r></w:p></w:txbxContent></v:textbox></v:shape>"##),
-        // Not a preset WordCraft draws as it is: a right triangle (`o:spt` 6).
+        // A preset WordCraft has no shape for is drawn as the nearest one, as for DrawingML: a
+        // right triangle (`o:spt` 6) as a triangle.
         pict(r##"<v:shape type="#_x0000_t6" style="width:20pt;height:20pt" fillcolor="red"/>"##),
         // Its own path wins over the shapetype's: not the preset.
         pict(r##"<v:shape type="#_x0000_t13" path="m,l21600,21600e" style="width:20pt;height:20pt"/>"##),
@@ -1563,8 +1564,8 @@ fn vml_preset_shapes_are_drawn() {
         pict(r##"<v:shapetype id="_x0000_t32" coordsize="21600,21600" o:spt="32" o:oned="t" path="m,l21600,21600e" filled="f"/><v:shape type="#_x0000_t32" style="position:absolute;width:30pt;height:15pt" strokecolor="#ff0000"><v:stroke endarrow="block"/></v:shape>"##),
         // A text box's shapetype without text is still a text box.
         pict(r##"<v:shape type="#_x0000_t202" style="width:30pt;height:15pt"/>"##),
-        // A shape that isn't drawn as a preset keeps its text, in a text box.
-        pict(r##"<v:shape type="#_x0000_t6" style="width:50pt;height:50pt"><v:textbox><w:txbxContent><w:p/></w:txbxContent></v:textbox></v:shape>"##),
+        // A shape that isn't a preset keeps its text, in a text box.
+        pict(r##"<v:shape o:spt="0" style="width:50pt;height:50pt"><v:textbox><w:txbxContent><w:p/></w:txbxContent></v:textbox></v:shape>"##),
         // Text in a preset with neither fill nor outline is kept.
         pict(r##"<v:shape type="#_x0000_t3" style="width:50pt;height:50pt" filled="f" stroked="f"><v:textbox><w:txbxContent><w:p/></w:txbxContent></v:textbox></v:shape>"##),
         pict(r##"<v:oval style="width:50pt;height:40pt"><v:textbox><w:txbxContent><w:p/></w:txbxContent></v:textbox></v:oval>"##),
@@ -1574,6 +1575,13 @@ fn vml_preset_shapes_are_drawn() {
         pict(r##"<v:shape type="#_x0000_t109" style="width:9pt;height:9pt"/>"##),
         pict(r##"<v:shape type="#_x0000_t110" style="width:9pt;height:9pt"/>"##),
         pict(r##"<v:shape type="#_x0000_t120" style="width:9pt;height:9pt"/>"##),
+        // Nearest shapes: left arrow, rectangular callout, four-point star.
+        pict(r##"<v:shape type="#_x0000_t66" style="width:60pt;height:20pt" fillcolor="#ffa500"/>"##),
+        pict(r##"<v:shape type="#_x0000_t61" style="width:60pt;height:20pt"/>"##),
+        pict(r##"<v:shape type="#_x0000_t187" style="width:20pt;height:20pt"/>"##),
+        // Not drawn: WordArt text (136) and a picture frame without its picture (75).
+        pict(r##"<v:shape type="#_x0000_t136" style="width:60pt;height:20pt" fillcolor="silver"/>"##),
+        pict(r##"<v:shape type="#_x0000_t75" style="width:60pt;height:20pt"/>"##),
     ]
     .concat();
     let d = read_body(&body);
@@ -1592,7 +1600,7 @@ fn vml_preset_shapes_are_drawn() {
     assert_eq!(shape(3), Some((ShapeKind::Triangle, 20.0, 10.0, None, black, 0.75, true, false)));
     // A preset holding text keeps its geometry around the text.
     assert_eq!(shape(4), Some((ShapeKind::Diamond, 50.0, 50.0, Some(Rgb(0xFF, 0xFF, 0)), black, 0.75, true, true)));
-    assert_eq!(shape(5), None);
+    assert_eq!(shape(5), Some((ShapeKind::Triangle, 20.0, 20.0, Some(Rgb(0xFF, 0, 0)), black, 0.75, true, false)));
     assert_eq!(shape(6), None);
     assert_eq!(shape(7), Some((ShapeKind::Line, 40.0, 10.0, None, black, 0.75, true, false)));
     assert_eq!(shape(8), Some((ShapeKind::Line, 30.0, 15.0, None, Some(Rgb(0xFF, 0, 0)), 0.75, false, false)));
@@ -1607,6 +1615,11 @@ fn vml_preset_shapes_are_drawn() {
     assert_eq!(kind(15), Some((ShapeKind::Rectangle, false)));
     assert_eq!(kind(16), Some((ShapeKind::Diamond, false)));
     assert_eq!(kind(17), Some((ShapeKind::Ellipse, false)));
+    assert_eq!(shape(18), Some((ShapeKind::Arrow, 60.0, 20.0, Some(Rgb(0xFF, 0xA5, 0x00)), black, 0.75, true, false)));
+    assert_eq!(kind(19), Some((ShapeKind::Rectangle, false)));
+    assert_eq!(kind(20), Some((ShapeKind::Star, false)));
+    assert_eq!(shape(21), None);
+    assert_eq!(shape(22), None);
 }
 
 /// #1377: hostile shape type numbers and references are skipped, never a panic.
@@ -1651,6 +1664,27 @@ fn vml_preset_shape_survives_saving() {
         matches!(
             &paras(&again)[0].objects[..],
             [InlineObject::Shape { kind: ShapeKind::Arrow, w: 120.0, h: 40.0, fill: Some(Rgb(0xFF, 0xA5, 0x00)), stroke: Some(Rgb::BLACK), .. }]
+        ),
+        "{:?}",
+        paras(&again)[0].objects
+    );
+}
+
+/// #1377: a VML preset drawn as its nearest shape (a left arrow, `o:spt` 66) is kept on save as
+/// that shape's DrawingML preset, as a DrawingML left arrow is.
+#[test]
+fn vml_nearest_preset_shape_survives_saving() {
+    let body = r##"<w:p><w:r><w:pict><v:shape type="#_x0000_t66" style="width:60pt;height:20pt" fillcolor="#ffa500"/></w:pict></w:r></w:p>"##;
+    let saved = wordcraft_docx::write(&read_body(body)).unwrap();
+    let mut z = zip::ZipArchive::new(std::io::Cursor::new(saved.as_slice())).unwrap();
+    let mut xml = String::new();
+    std::io::Read::read_to_string(&mut z.by_name("word/document.xml").unwrap(), &mut xml).unwrap();
+    assert!(xml.contains(r#"prst="rightArrow""#), "{xml}");
+    let again = wordcraft_docx::read(&saved).unwrap();
+    assert!(
+        matches!(
+            &paras(&again)[0].objects[..],
+            [InlineObject::Shape { kind: ShapeKind::Arrow, w: 60.0, h: 20.0, fill: Some(Rgb(0xFF, 0xA5, 0x00)), .. }]
         ),
         "{:?}",
         paras(&again)[0].objects
