@@ -31,7 +31,9 @@ fn app(args: &[OsString]) -> Output {
     child.wait_with_output().unwrap()
 }
 
-/// The file opens once the window is up (`open_non_unicode`, unit-tested in `main.rs`).
+/// The file opens once the window is up (`open_non_unicode`, unit-tested in `main.rs`). Not on
+/// macOS, where the app opens its window without a display variable and so keeps running.
+#[cfg(not(target_os = "macos"))]
 #[test]
 fn a_file_with_such_a_name_starts_the_app() {
     let out = app(&["--sample".into(), OsString::from_vec(b"caf\xe9.docx".to_vec())]);

@@ -398,7 +398,8 @@ fn main() -> eframe::Result {
     )
 }
 
-#[cfg(all(test, unix))]
+// Not on macOS: APFS refuses file names that aren't valid UTF-8, so no such file can exist there.
+#[cfg(all(test, unix, not(target_os = "macos")))]
 mod tests {
     use super::*;
     use std::os::unix::ffi::OsStringExt;
